@@ -1,4 +1,3 @@
-#include "kernels/generate_initial_eye_rays.hpp"
 #include "kernels/ray_tracing.hpp"
 
 #define CL_HPP_TARGET_OPENCL_VERSION 300
@@ -12,6 +11,9 @@
 #define EXIT_OPENCL_SETUP_FAILURE 1
 #define EXIT_OPENCL_BUILD_KERNEL_FAILURE 2
 #define EXIT_SETUP_SDL2_FAILURE 3
+
+#define WIDTH 4
+#define HEIGHT 3
 
 int main(int argc, char** argv) {
 
@@ -30,36 +32,49 @@ int main(int argc, char** argv) {
   cl::Context context(device);
   cl::CommandQueue queue(context, device);
 
-  /* Build and launch kernel: generate initial eye rays */
+  /* Build and launch ray tracing kernel */
 
   // Create and build the program
-  cl::Program program(context, kernelSource);
+  cl::Program program(context, kernel_src_main);
   program.build({device});
 
   // Input data
-  std::vector<float> a = {0.123f, 0.456f, 0.789f, 0.101f};
-  std::vector<float> b(4, 0.0f);
+  float time = 12.34f;
+  cl_float3 cameraPosition = {0.0f, 0.0f, 0.0f};
+  cl_float3 cameraDirection = {0.0f, 0.0f, 1.0f};
 
   // Create buffers
-  cl::Buffer bufferA(context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, sizeof(float) * a.size(), a.data());
-  cl::Buffer bufferB(context, CL_MEM_WRITE_ONLY, sizeof(float) * b.size());
+  cl::Buffer bufferTime(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(float), &time);
+  cl::Buffer bufferCameraPosition(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(cl_float3), &cameraPosition);
+  cl::Buffer bufferCameraDirection(context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, sizeof(cl_float3), &cameraDirection);
+  cl::Buffer bufferEyeRayOrigins(context, CL_MEM_READ_WRITE, sizeof(cl_float3) * WIDTH * HEIGHT);
+  cl::Buffer bufferEyeRayDirections(context, CL_MEM_READ_WRITE, sizeof(cl_float3) * WIDTH * HEIGHT);
 
   // Create the kernel and set the arguments
-  cl::Kernel kernel(program, "test");
-  kernel.setArg(0, bufferA);
-  kernel.setArg(1, bufferB);
+  cl::Kernel kernel(program, "rayTracing");
+  kernel.setArg(0, bufferTime);
+  kernel.setArg(1, bufferCameraPosition);
+  kernel.setArg(2, bufferCameraDirection);
+  kernel.setArg(3, bufferEyeRayOrigins);
+  kernel.setArg(4, bufferEyeRayDirections);
 
   // Execute the kernel
-  cl::NDRange globalSize(a.size());
+  cl::NDRange globalSize(WIDTH, HEIGHT);
   queue.enqueueNDRangeKernel(kernel, cl::NullRange, globalSize, cl::NullRange);
+
+  // Output data
+  cl_float3 eyeRayOrigins[WIDTH * HEIGHT];
+  cl_float3 eyeRayDirections[WIDTH * HEIGHT];
 
   // Read the result back to host memory
   queue.finish();
-  queue.enqueueReadBuffer(bufferA, CL_TRUE, 0, sizeof(float) * b.size(), b.data());
+  queue.enqueueReadBuffer(bufferEyeRayOrigins, CL_TRUE, 0, sizeof(cl_float3) * WIDTH * HEIGHT, eyeRayOrigins);
+  queue.enqueueReadBuffer(bufferEyeRayDirections, CL_TRUE, 0, sizeof(cl_float3) * WIDTH * HEIGHT, eyeRayDirections);
 
   // Output the results
-  for (size_t i = 0; i < b.size(); ++i) {
-    std::cout << "b[" << i << "] = " << b[i] << std::endl;
+  for (int i = 0; i < HEIGHT * WIDTH; i++) {
+    std::cout << eyeRayOrigins[i].x << " " << eyeRayOrigins[i].y << " " << eyeRayOrigins[i].z << " | "
+    << eyeRayDirections[i].x << " " << eyeRayDirections[i].y << " " << eyeRayDirections[i].z << std::endl;
   }
 
   return EXIT_SUCCESS;

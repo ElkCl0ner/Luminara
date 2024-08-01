@@ -3,10 +3,11 @@
 
 #include <string>
 
-//*seed = fract(sin(seed)*43758.5453123);
 std::string kernel_src_random = R"(
-__kernel void random(__private float *seed) {
-  *seed = 0.90f;
+float random(float *seed) {
+  *seed = sin(*seed)*43758.5453123;
+  *seed = *seed - floor(*seed);
+  return *seed;
 }
 )";
 
